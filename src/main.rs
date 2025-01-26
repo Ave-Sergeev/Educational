@@ -70,6 +70,10 @@ fn conv_grad(x: &[f32], kernel: &[f32], grad: &[f32]) -> Vec<f32> {
 
 // Генерация ядра (чем больше отклонение, тем больше будет сглаживание)
 fn generate_gauss_kernel(size: usize, sigma: f32) -> Vec<f32> {
+    if size == 0 || sigma <= 0.0 {
+        panic!("The `size` and `sigma` fields cannot be equal to or less than 0.");
+    }
+
     let mut kernel = vec![0.0; size];
     let mean = size as f32 / 2.0;
     let sum: f32 = (0..size)
@@ -90,8 +94,11 @@ fn generate_gauss_kernel(size: usize, sigma: f32) -> Vec<f32> {
 
 #[cfg(test)]
 mod tests {
+    use approx::assert_relative_eq;
+
     use super::*;
 
+    // Проверяем корректность работы функции свертки ядра с градиентом
     #[test]
     fn test_conv_grad() {
         let x: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
@@ -108,22 +115,75 @@ mod tests {
             0.4 * 0.5 + 0.5 * 0.3,
             0.5 * 0.5,
         ];
-        println!("expected: {:?}", expected);
 
         for (res, exp) in result.iter().zip(expected.iter()) {
             assert!((res - exp).abs() < 1e-6, "Got {}, expected {}", res, exp);
         }
     }
 
+    // Проверяем, что размер возвращаемого ядра соответствует заданному размеру, и значения возвращаемые функцией, совпадают с референсными
     #[test]
-    fn test_gauss_kernel() {
-        let kernel: Vec<f32> = generate_gauss_kernel(5, 1.0);
-
-        assert_eq!(kernel.len(), 5);
+    fn test_kernel() {
+        let size = 5;
+        let sigma = 1.0;
+        let kernel = generate_gauss_kernel(size, sigma);
+        assert_eq!(kernel.len(), size);
         assert_eq!(kernel[0], 0.017873362);
         assert_eq!(kernel[1], 0.13206728);
         assert_eq!(kernel[2], 0.35899606);
         assert_eq!(kernel[3], 0.35899606);
         assert_eq!(kernel[4], 0.13206728);
+        assert!((kernel.iter().sum::<f32>() - 1.0).abs() < 1e-6);
+    }
+
+    // Проверяем, что сумма всех элементов ядра равна 1 (нормализация).
+    #[test]
+    fn test_kernel_normalization() {
+        let size = 9;
+        let sigma = 2.0;
+        let kernel = generate_gauss_kernel(size, sigma);
+        let sum: f32 = kernel.iter().sum();
+        assert_relative_eq!(sum, 1.0, epsilon = 1e-6);
+    }
+
+    // Проверяем, что максимальное значение находится в центре ядра.
+    #[test]
+    fn test_kernel_peak() {
+        let size = 5;
+        let sigma = 1.0;
+        let kernel = generate_gauss_kernel(size, sigma);
+        assert_eq!(kernel.iter().max_by(|a, b| a.partial_cmp(b).unwrap()), Some(&kernel[size / 2]));
+    }
+
+    // Сравниваем ядра с разными значениями сигмы, чтобы убедиться, что большая сигма дает более гладкое распределение.
+    #[test]
+    fn test_different_sigmas() {
+        let size = 7;
+        let sigma1 = 1.0;
+        let sigma2 = 2.0;
+        let kernel1 = generate_gauss_kernel(size, sigma1);
+        let kernel2 = generate_gauss_kernel(size, sigma2);
+        assert!(kernel1[size / 2] > kernel2[size / 2]);
+    }
+
+    // Проверяем обработку некорректных данных
+    #[test]
+    #[should_panic]
+    fn test_zero_size() {
+        generate_gauss_kernel(0, 1.0);
+    }
+
+    // Проверяем обработку некорректных данных
+    #[test]
+    #[should_panic]
+    fn test_negative_sigma() {
+        generate_gauss_kernel(5, -1.0);
+    }
+
+    // Проверяем обработку некорректных данных
+    #[test]
+    #[should_panic]
+    fn test_zero_sigma() {
+        generate_gauss_kernel(5, 0.0);
     }
 }
